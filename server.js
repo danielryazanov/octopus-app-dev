@@ -1,7 +1,7 @@
 const express = require('express');
 const mongoose = require('mongoose');
 const client = require('prom-client');
-
+const os = require('os'); 
 const app = express();
 const PORT = process.env.PORT || 3000;
 
@@ -37,10 +37,14 @@ async function updatePrometheusMetrics() {
 }
 // -----------------------------------------------
 // --- שלב האבטחה: שימוש במשתני סביבה (בלי לחשוף סיסמאות בקוד) ---
+
 const ADMIN_USER=process.env.ADMIN_USER;
 const ADMIN_PASS=process.env.ADMIN_PASS;
 
 const authMiddleware = (req, res, next) => {
+    // הוכחת Load Balancer: מדפיס ללוג את המזהה של הקונטיינר שעונה כרגע
+    console.log(`[LB Check] Request handled by container: ${os.hostname()}`);
+
     const authHeader = req.headers.authorization;
 
     if (!authHeader) {
@@ -231,6 +235,11 @@ app.delete('/api/delete/:id', async (req, res) => {
 app.get('/metrics', async (req, res) => {
     res.set('Content-Type', client.register.contentType);
     res.end(await client.register.metrics());
+});
+
+// נתיב להוכחת ה-Load Balancer
+app.get('/whoami', (req, res) => {
+    res.send(`<h1>Hi! I am container ID: ${os.hostname()}</h1>`);
 });
 
 app.listen(PORT, () => console.log(`Server running on port ${PORT}`));
