@@ -37,8 +37,8 @@ async function updatePrometheusMetrics() {
 }
 // -----------------------------------------------
 // --- שלב האבטחה: שימוש במשתני סביבה (בלי לחשוף סיסמאות בקוד) ---
-const ADMIN_USER = process.env.ADMIN_USER;
-const ADMIN_PASS = process.env.ADMIN_PASS;
+const ADMIN_USER=process.env.ADMIN_USER;
+const ADMIN_PASS=process.env.ADMIN_PASS;
 
 const authMiddleware = (req, res, next) => {
     const authHeader = req.headers.authorization;
