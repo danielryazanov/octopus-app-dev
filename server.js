@@ -17,8 +17,9 @@ mongoose.connect(mongoURI)
     .then(() => console.log('Connected to MongoDB Atlas'))
     .catch(err => console.error('MongoDB connection error:', err));
 
-// Schema - מותאם למבנה הקיים ב-Atlas (שדה qty ותיקיית fruits)
+// Schema גמיש שמקבל גם ID כמספר וגם כ-ObjectId
 const itemSchema = new mongoose.Schema({
+    _id: mongoose.Schema.Types.Mixed, // מאפשר ID ידני כמו 1, 2 וגם אוטומטי
     name: { 
         type: String, 
         required: true,
@@ -27,9 +28,9 @@ const itemSchema = new mongoose.Schema({
             message: "שם חייב להכיל אותיות בלבד!"
         }
     },
-    qty: { type: Number, min: 0, default: 0 }, // מונע שלילי במסד הנתונים
+    qty: { type: Number, min: 0, default: 0 },
     idealStock: { type: Number, min: 0, default: 10 }
-}, { collection: 'fruits' }); // ככה הוא מוצא את הנתונים הקיימים שלך
+}, { collection: 'fruits', versionKey: false });
 
 const Item = mongoose.model('Item', itemSchema);
 
@@ -46,7 +47,7 @@ app.get('/', async (req, res) => {
                     <span id="qty-${item._id}" style="margin: 0 15px; font-weight: bold; width: 30px; display: inline-block; text-align: center;">${item.qty || 0}</span>
                     <button onclick="updateQty('${item._id}', 1)" style="padding: 5px 12px; cursor: pointer;">+</button>
                 </div>
-                <button onclick="saveQty('${item._id}')" style="background: #28a745; color: white; border: none; padding: 8px 15px; cursor: pointer; border-radius: 4px; font-weight: bold;">שמור</button>
+                <button id="btn-${item._id}" onclick="saveQty('${item._id}')" style="background: #28a745; color: white; border: none; padding: 8px 15px; cursor: pointer; border-radius: 4px; font-weight: bold;">שמור</button>
             </div>
         `).join('');
 
@@ -63,7 +64,7 @@ app.get('/', async (req, res) => {
                     </style>
                 </head>
                 <body>
-                    <h1>hello world</h1>
+                    <h1>hello world 🍎</h1>
                     <h2>ניהול מלאי חכם 🛒</h2>
                     <div class="form-box">
                         <h3 style="margin-top: 0;">➕ הוספת פריט חדש</h3>
@@ -80,28 +81,32 @@ app.get('/', async (req, res) => {
                         function updateQty(id, change) {
                             const el = document.getElementById('qty-' + id);
                             let val = parseInt(el.innerText) + change;
-                            // מניעת מספר שלילי בעדכון מלאי קיים
-                            if (val >= 0) {
-                                el.innerText = val;
-                            } else {
-                                alert("המלאי לא יכול להיות נמוך מ-0!");
-                            }
+                            if (val >= 0) el.innerText = val;
                         }
 
                         async function saveQty(id) {
                             const current = parseInt(document.getElementById('qty-' + id).innerText);
                             const ideal = parseInt(document.getElementById('ideal-' + id).innerText);
+                            const btn = document.getElementById('btn-' + id);
                             
-                            if (current > ideal) {
-                                alert('שים לב: חריגה של ' + (current - ideal) + ' מהכמות האידיאלית!');
-                            }
+                            if (current > ideal) alert('חריגה של ' + (current - ideal) + ' מהכמות האידיאלית!');
                             
-                            await fetch('/api/save', {
+                            btn.innerText = 'שומר...';
+                            const response = await fetch('/api/save', {
                                 method: 'POST',
                                 headers: { 'Content-Type': 'application/json' },
                                 body: JSON.stringify({ id, newQty: current })
                             });
-                            alert('המלאי נשמר ב-Atlas!');
+
+                            if (response.ok) {
+                                btn.innerText = 'שמור';
+                                btn.style.background = '#28a745';
+                                alert('נשמר בהצלחה ב-Atlas!');
+                            } else {
+                                alert('שגיאה: השמירה נכשלה בשרת.');
+                                btn.innerText = 'נסה שוב';
+                                btn.style.background = '#dc3545';
+                            }
                         }
 
                         async function addNewItem() {
@@ -109,29 +114,15 @@ app.get('/', async (req, res) => {
                             const current = parseInt(document.getElementById('newCurrent').value);
                             const ideal = parseInt(document.getElementById('newIdeal').value);
 
-                            // בדיקת שם - אותיות בלבד
-                            if (!/^[a-zA-Zא-ת\\s]+$/.test(name)) {
-                                return alert('שגיאה: שם הפריט חייב להכיל אותיות בלבד (ללא מספרים או תווים)!');
-                            }
-
-                            // מניעת מספר שלילי בהוספה
-                            if (current < 0 || ideal < 0) {
-                                return alert('שגיאה: הכמות אינה יכולה להיות שלילית!');
-                            }
+                            if (!/^[a-zA-Zא-ת\\s]+$/.test(name)) return alert('שם חייב להכיל אותיות בלבד!');
+                            if (current < 0 || ideal < 0) return alert('כמות לא יכולה להיות שלילית!');
 
                             const response = await fetch('/api/add', {
                                 method: 'POST',
                                 headers: { 'Content-Type': 'application/json' },
                                 body: JSON.stringify({ name, qty: current, idealStock: ideal })
                             });
-                            
-                            if (response.ok) {
-                                alert('הפריט נוסף בהצלחה!');
-                                window.location.reload();
-                            } else {
-                                const err = await response.json();
-                                alert('שגיאה: ' + err.message);
-                            }
+                            if (response.ok) window.location.reload();
                         }
                     </script>
                 </body>
@@ -140,10 +131,25 @@ app.get('/', async (req, res) => {
     } catch (e) { res.status(500).send("Error: " + e.message); }
 });
 
+// API: עדכון עם טיפול ב-ID מסוג מספר
 app.post('/api/save', async (req, res) => {
-    const { id, newQty } = req.body;
-    await Item.findByIdAndUpdate(id, { qty: Math.max(0, newQty) });
-    res.sendStatus(200);
+    try {
+        const { id, newQty } = req.body;
+        // המרת ה-ID למספר אם הוא נראה כמו מספר, אחרת השאר כטקסט
+        const queryId = isNaN(id) ? id : Number(id);
+        
+        const result = await Item.updateOne(
+            { _id: queryId }, 
+            { $set: { qty: Math.max(0, newQty) } }
+        );
+
+        if (result.matchedCount === 0) {
+            return res.status(404).json({ message: "Item not found" });
+        }
+        res.sendStatus(200);
+    } catch (err) {
+        res.status(500).json({ message: err.message });
+    }
 });
 
 app.post('/api/add', async (req, res) => {
@@ -152,9 +158,7 @@ app.post('/api/add', async (req, res) => {
         const newItem = new Item({ name, qty, idealStock });
         await newItem.save();
         res.sendStatus(201);
-    } catch (err) {
-        res.status(400).json({ message: err.message });
-    }
+    } catch (err) { res.status(400).json({ message: err.message }); }
 });
 
 app.get('/metrics', async (req, res) => {
