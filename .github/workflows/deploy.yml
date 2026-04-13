@@ -1,10 +1,11 @@
-name: CI/CD Final Step-by-Step
+name: CI/CD Final Production
 
 on:
   push:
     branches: [ main ]
 
 jobs:
+  # שלב 1: בניית האימג' ודחיפה ל-Docker Hub
   build-and-push:
     runs-on: ubuntu-latest
     steps:
@@ -17,11 +18,12 @@ jobs:
           username: ${{ secrets.DOCKER_USERNAME }}
           password: ${{ secrets.DOCKER_PASSWORD }}
 
-      - name: Build and push
+      - name: Build and push Docker image
         run: |
           docker build -t ${{ secrets.DOCKER_USERNAME }}/octopus-app:latest .
           docker push ${{ secrets.DOCKER_USERNAME }}/octopus-app:latest
 
+  # שלב 2: התחברות ל-AWS והרצת המערכת
   deploy:
     needs: build-and-push
     runs-on: ubuntu-latest
@@ -33,24 +35,47 @@ jobs:
           username: ubuntu
           key: ${{ secrets.SSH_PRIVATE_KEY }}
           script: |
-            # 1. התקנת Docker Compose V2 אם חסר
+            # 1. התקנת Docker Compose מודרני אם חסר
             if ! command -v docker-compose &> /dev/null; then
               sudo curl -L "https://github.com/docker/compose/releases/latest/download/docker-compose-$(uname -s)-$(uname -m)" -o /usr/local/bin/docker-compose
               sudo chmod +x /usr/local/bin/docker-compose
             fi
 
-            # 2. כניסה לתיקייה
-            mkdir -p ~/app
+            # 2. הכנת תיקיות להגדרות
+            mkdir -p ~/app/nginx ~/app/prometheus
             cd ~/app
 
-            # 3. יצירת ה-Compose (בגרסה מודרנית ללא ה-Warning)
+            # 3. יצירת הגדרות Nginx (Load Balancer)
+            cat <<EOF > nginx/nginx.conf
+            events { worker_connections 1024; }
+            http {
+                server {
+                    listen 80;
+                    location / {
+                        proxy_pass http://app:3000;
+                        proxy_set_header Host \$host;
+                        proxy_set_header X-Real-IP \$remote_addr;
+                    }
+                }
+            }
+            EOF
+
+            # 4. יצירת הגדרות Prometheus (ניטור)
+            cat <<EOF > prometheus/prometheus.yml
+            global:
+              scrape_interval: 15s
+            scrape_configs:
+              - job_name: 'nodejs-app'
+                static_configs:
+                  - targets: ['app:3000']
+            EOF
+
+            # 5. יצירת ה-Docker Compose המלא
             cat <<EOF > docker-compose.yaml
             services:
               app:
                 image: ${{ secrets.DOCKER_USERNAME }}/octopus-app:latest
                 restart: always
-                ports:
-                  - "80:3000"
                 environment:
                   - MONGO_URI=mongodb://db:27017/fruitsDB
                 depends_on:
@@ -61,14 +86,34 @@ jobs:
                 restart: always
                 volumes:
                   - mongodb_data:/data/db
+              nginx:
+                image: nginx:alpine
+                restart: always
+                ports:
+                  - "80:80"
+                volumes:
+                  - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+                depends_on:
+                  - app
+              prometheus:
+                image: prom/prometheus:latest
+                restart: always
+                ports:
+                  - "9090:9090"
+                volumes:
+                  - ./prometheus/prometheus.yml:/etc/prometheus/prometheus.yml
+              grafana:
+                image: grafana/grafana:latest
+                restart: always
+                ports:
+                  - "3000:3000"
             volumes:
               mongodb_data:
             EOF
 
-            # 4. ניקוי יסודי של השרת מקונטיינרים קודמים (פותר את שגיאת ה-Conflict)
+            # 6. ניקוי קונטיינרים ישנים (למניעת Conflict) והרצה
             sudo /usr/local/bin/docker-compose down --remove-orphans || true
-            sudo docker rm -f mongodb octopus-app || true
-
-            # 5. הרצה נקייה
+            sudo docker rm -f mongodb octopus-app nginx prometheus grafana || true
+            
             sudo /usr/local/bin/docker-compose pull
             sudo /usr/local/bin/docker-compose up -d
