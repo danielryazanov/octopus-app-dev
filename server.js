@@ -17,146 +17,139 @@ mongoose.connect(mongoURI)
     .then(() => console.log('Connected to MongoDB Atlas'))
     .catch(err => console.error('MongoDB connection error:', err));
 
-// Schema עם הגבלות (Validation) ברמת מסד הנתונים
+// Schema - מותאם למבנה הקיים ב-Atlas (שדה qty ותיקיית fruits)
 const itemSchema = new mongoose.Schema({
     name: { 
         type: String, 
         required: true,
         validate: {
-            validator: function(v) {
-                return /^[a-zA-Zא-ת\s]+$/.test(v); // רק אותיות ורווחים
-            },
-            message: props => `${props.value} אינו שם תקין! השתמש באותיות בלבד.`
+            validator: function(v) { return /^[a-zA-Zא-ת\s]+$/.test(v); },
+            message: "שם חייב להכיל אותיות בלבד!"
         }
     },
-    currentStock: { type: Number, min: 0 }, // מונע שלילי
-    idealStock: { type: Number, min: 0 }
-});
+    qty: { type: Number, min: 0, default: 0 }, // מונע שלילי במסד הנתונים
+    idealStock: { type: Number, min: 0, default: 10 }
+}, { collection: 'fruits' }); // ככה הוא מוצא את הנתונים הקיימים שלך
+
 const Item = mongoose.model('Item', itemSchema);
 
 // Routes
 app.get('/', async (req, res) => {
-    const items = await Item.find();
-    let rows = items.map(item => `
-        <div style="border-bottom: 1px solid #eee; padding: 15px; display: flex; align-items: center; justify-content: space-between; width: 600px;">
-            <div style="width: 150px;">
-                <strong style="font-size: 1.1em;">${item.name}</strong>
-            </div>
-            <div style="color: #666; font-size: 0.9em;">
-                יעד חנות: <span id="ideal-${item._id}">${item.idealStock}</span>*
-            </div>
-            <div>
-                <button onclick="updateQty('${item._id}', -1)" style="padding: 5px 12px;">-</button>
-                <span id="qty-${item._id}" style="margin: 0 15px; font-weight: bold; width: 30px; display: inline-block; text-align: center;">${item.currentStock}</span>
-                <button onclick="updateQty('${item._id}', 1)" style="padding: 5px 12px;">+</button>
-            </div>
-            <button onclick="saveQty('${item._id}')" style="background: #28a745; color: white; border: none; padding: 8px 15px; cursor: pointer; border-radius: 4px;">שמור</button>
-        </div>
-    `).join('');
-
-    res.send(`
-        <html>
-            <head>
-                <title>Octopus Inventory Management</title>
-                <meta charset="UTF-8">
-                <style>
-                    body { font-family: sans-serif; background: #f4f7f6; display: flex; flex-direction: column; align-items: center; padding: 40px; direction: rtl; }
-                    .form-box { background: white; padding: 20px; border-radius: 8px; box-shadow: 0 2px 10px rgba(0,0,0,0.1); margin-bottom: 20px; width: 600px; }
-                    input { padding: 8px; margin: 5px; border: 1px solid #ddd; border-radius: 4px; }
-                    .btn-add { background: #007bff; color: white; border: none; padding: 10px; cursor: pointer; width: 100%; border-radius: 4px; }
-                </style>
-            </head>
-            <body>
-                <h1>ניהול מלאי חכם 🛒</h1>
-
-                <div class="form-box">
-                    <h3>➕ הוספת פריט חדש</h3>
-                    <input type="text" id="newName" placeholder="שם הפריט (אותיות בלבד)" style="width: 96%;">
-                    <input type="number" id="newCurrent" placeholder="כמות במלאי" style="width: 46%;">
-                    <input type="number" id="newIdeal" placeholder="כמות יעד (אידיאלית)" style="width: 46%;">
-                    <button class="btn-add" onclick="addNewItem()">הוסף למערכת</button>
+    try {
+        const items = await Item.find();
+        let rows = items.map(item => `
+            <div style="border-bottom: 1px solid #eee; padding: 15px; display: flex; align-items: center; justify-content: space-between; width: 600px; background: white; margin-bottom: 5px; border-radius: 8px;">
+                <div style="width: 150px;"><strong style="font-size: 1.1em;">${item.name}</strong></div>
+                <div style="color: #666; font-size: 0.9em;">יעד: <span id="ideal-${item._id}">${item.idealStock || 10}</span>*</div>
+                <div>
+                    <button onclick="updateQty('${item._id}', -1)" style="padding: 5px 12px; cursor: pointer;">-</button>
+                    <span id="qty-${item._id}" style="margin: 0 15px; font-weight: bold; width: 30px; display: inline-block; text-align: center;">${item.qty || 0}</span>
+                    <button onclick="updateQty('${item._id}', 1)" style="padding: 5px 12px; cursor: pointer;">+</button>
                 </div>
+                <button onclick="saveQty('${item._id}')" style="background: #28a745; color: white; border: none; padding: 8px 15px; cursor: pointer; border-radius: 4px; font-weight: bold;">שמור</button>
+            </div>
+        `).join('');
 
-                <div style="background: white; padding: 10px; border-radius: 8px; box-shadow: 0 2px 10px rgba(0,0,0,0.1);">
-                    ${rows}
-                </div>
+        res.send(`
+            <html>
+                <head>
+                    <title>Octopus Smart Inventory</title>
+                    <meta charset="UTF-8">
+                    <style>
+                        body { font-family: system-ui; background: #f0f2f5; display: flex; flex-direction: column; align-items: center; padding: 40px; direction: rtl; }
+                        .form-box { background: white; padding: 25px; border-radius: 12px; box-shadow: 0 4px 15px rgba(0,0,0,0.05); margin-bottom: 30px; width: 600px; }
+                        input { padding: 12px; margin: 5px; border: 1px solid #ddd; border-radius: 6px; font-size: 14px; }
+                        .btn-add { background: #007bff; color: white; border: none; padding: 12px; cursor: pointer; width: 100%; border-radius: 6px; font-weight: bold; margin-top: 10px; }
+                    </style>
+                </head>
+                <body>
+                    <h1>hello world</h1>
+                    <h2>ניהול מלאי חכם 🛒</h2>
+                    <div class="form-box">
+                        <h3 style="margin-top: 0;">➕ הוספת פריט חדש</h3>
+                        <input type="text" id="newName" placeholder="שם הפריט (אותיות בלבד)" style="width: 96%;">
+                        <div style="display: flex; gap: 10px;">
+                            <input type="number" id="newCurrent" min="0" placeholder="כמות במלאי" style="width: 50%;">
+                            <input type="number" id="newIdeal" min="0" placeholder="כמות יעד" style="width: 50%;">
+                        </div>
+                        <button class="btn-add" onclick="addNewItem()">הוסף למערכת</button>
+                    </div>
+                    <div id="inventory-list">${rows || '<p>טוען נתונים...</p>'}</div>
 
-                <script>
-                    function updateQty(id, change) {
-                        const el = document.getElementById('qty-' + id);
-                        let val = parseInt(el.innerText) + change;
-                        if (val >= 0) el.innerText = val;
-                    }
-
-                    async function saveQty(id) {
-                        const current = parseInt(document.getElementById('qty-' + id).innerText);
-                        const ideal = parseInt(document.getElementById('ideal-' + id).innerText);
-
-                        if (current > ideal) {
-                            alert('שים לב! חרגת מהכמות האידיאלית ב-' + (current - ideal) + ' יחידות.');
+                    <script>
+                        function updateQty(id, change) {
+                            const el = document.getElementById('qty-' + id);
+                            let val = parseInt(el.innerText) + change;
+                            // מניעת מספר שלילי בעדכון מלאי קיים
+                            if (val >= 0) {
+                                el.innerText = val;
+                            } else {
+                                alert("המלאי לא יכול להיות נמוך מ-0!");
+                            }
                         }
 
-                        const response = await fetch('/api/save', {
-                            method: 'POST',
-                            headers: { 'Content-Type': 'application/json' },
-                            body: JSON.stringify({ id, newQty: current })
-                        });
-                        if (response.ok) alert('המלאי עודכן!');
-                    }
-
-                    async function addNewItem() {
-                        const name = document.getElementById('newName').value;
-                        const current = parseInt(document.getElementById('newCurrent').value);
-                        const ideal = parseInt(document.getElementById('newIdeal').value);
-
-                        // בדיקת שם (רק אותיות עברית/אנגלית)
-                        const nameRegex = /^[a-zA-Zא-ת\\s]+$/;
-                        if (!nameRegex.test(name)) {
-                            alert('שגיאה: שם הפריט חייב להכיל אותיות בלבד (ללא מספרים או תווים)!');
-                            return;
+                        async function saveQty(id) {
+                            const current = parseInt(document.getElementById('qty-' + id).innerText);
+                            const ideal = parseInt(document.getElementById('ideal-' + id).innerText);
+                            
+                            if (current > ideal) {
+                                alert('שים לב: חריגה של ' + (current - ideal) + ' מהכמות האידיאלית!');
+                            }
+                            
+                            await fetch('/api/save', {
+                                method: 'POST',
+                                headers: { 'Content-Type': 'application/json' },
+                                body: JSON.stringify({ id, newQty: current })
+                            });
+                            alert('המלאי נשמר ב-Atlas!');
                         }
 
-                        if (current < 0 || ideal < 0) {
-                            alert('שגיאה: הכמות לא יכולה להיות שלילית!');
-                            return;
-                        }
+                        async function addNewItem() {
+                            const name = document.getElementById('newName').value;
+                            const current = parseInt(document.getElementById('newCurrent').value);
+                            const ideal = parseInt(document.getElementById('newIdeal').value);
 
-                        if (current > ideal) {
-                            alert('שים לב: הוספת מוצר עם חריגה של ' + (current - ideal) + ' מהכמות האידיאלית.');
-                        }
+                            // בדיקת שם - אותיות בלבד
+                            if (!/^[a-zA-Zא-ת\\s]+$/.test(name)) {
+                                return alert('שגיאה: שם הפריט חייב להכיל אותיות בלבד (ללא מספרים או תווים)!');
+                            }
 
-                        const response = await fetch('/api/add', {
-                            method: 'POST',
-                            headers: { 'Content-Type': 'application/json' },
-                            body: JSON.stringify({ name, currentStock: current, idealStock: ideal })
-                        });
+                            // מניעת מספר שלילי בהוספה
+                            if (current < 0 || ideal < 0) {
+                                return alert('שגיאה: הכמות אינה יכולה להיות שלילית!');
+                            }
 
-                        if (response.ok) {
-                            alert('הפריט נוסף בהצלחה!');
-                            window.location.reload();
-                        } else {
-                            const err = await response.json();
-                            alert('שגיאה מהשרת: ' + err.message);
+                            const response = await fetch('/api/add', {
+                                method: 'POST',
+                                headers: { 'Content-Type': 'application/json' },
+                                body: JSON.stringify({ name, qty: current, idealStock: ideal })
+                            });
+                            
+                            if (response.ok) {
+                                alert('הפריט נוסף בהצלחה!');
+                                window.location.reload();
+                            } else {
+                                const err = await response.json();
+                                alert('שגיאה: ' + err.message);
+                            }
                         }
-                    }
-                </script>
-            </body>
-        </html>
-    `);
+                    </script>
+                </body>
+            </html>
+        `);
+    } catch (e) { res.status(500).send("Error: " + e.message); }
 });
 
-// API: עדכון
 app.post('/api/save', async (req, res) => {
     const { id, newQty } = req.body;
-    await Item.findByIdAndUpdate(id, { currentStock: Math.max(0, newQty) });
+    await Item.findByIdAndUpdate(id, { qty: Math.max(0, newQty) });
     res.sendStatus(200);
 });
 
-// API: הוספה
 app.post('/api/add', async (req, res) => {
     try {
-        const { name, currentStock, idealStock } = req.body;
-        const newItem = new Item({ name, currentStock, idealStock });
+        const { name, qty, idealStock } = req.body;
+        const newItem = new Item({ name, qty, idealStock });
         await newItem.save();
         res.sendStatus(201);
     } catch (err) {
