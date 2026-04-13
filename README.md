@@ -134,4 +134,10 @@ sudo docker-compose up -d
 
 ---
 
-Feel free to contribute to this documentation by submitting suggestions or pull requests.
+🤖 AI Assistance
+
+The development and research phases of this project were supported by advanced AI tools:
+
+NotebookLM / Gemini: Utilized for technical research, information gathering, and system documentation.
+
+Claude (for VS Code): Utilized for logic optimization, and debugging.
