@@ -1,37 +1,28 @@
-📋 Project Overview
-Project Octopus is an advanced inventory management system deployed on AWS with a modern microservices architecture.
+# Octopus App Dev
 
-🔑 Key Components:
-Cloud Infrastructure (AWS)
+This repository contains the Octopus application, which is designed to provide a comprehensive solution for various tasks. Below is a detailed documentation of each component (RP) in Hebrew.
 
-EC2 t3.micro instance running Docker containers
-VPC with isolated networking
-Security groups controlling access (ports 80, 22, 3000)
-Infrastructure managed via Terraform (IaC)
-Architecture (High Availability)
+## רפלקציה (Reflection)
+רספלקציה עוסקת בהבנה של המידע המתקבל ונכנסת לעומק הפונקציות השונות של האפליקציה.
 
-Load Balancer: Nginx (reverse proxy, round-robin distribution)
-Application Layer: 3 Node.js Express replicas for redundancy
-Database Layer: MongoDB with Docker Volumes for data persistence
-Monitoring: Prometheus + Grafana for metrics and visualization
-CI/CD Pipeline (Automation)
+## ניהול (Management)
+מודול זה כולל את כל הכלים הנדרשים לניהול הפרויקט, כולל הגדרות ותצורות שונות.
 
-Code push → GitHub Actions → Docker build → Docker Hub → Auto-deploy to EC2 via SSH
-Zero-downtime deployments
-Resilience Features
+## אינטגרציה (Integration)
+אינטגרציה בין רכיבי האפליקציה השונים מבטיחה שהתהליכים יתנהלו בצורה חלקה ויספקו חווית משתמש טובה.
 
-Auto-restart of failed containers
-Load balancer detects failures and reroutes traffic
-Data persistence via Docker Volumes
-Horizontal scaling with 3 replicas
-🔐 Access Credentials:
-Username: octopus
-Password: octopus
-Live site: http://13.50.17.24/
-📊 Technical Stack:
-Component	Technology	Port	Role
-Load Balancer	Nginx	80	Traffic routing & balancing
-Application	Node.js Express	3000	Business logic
-Database	MongoDB	27017	Data persistence
-Metrics	Prometheus	9090	Performance data collection
-Dashboard	Grafana	3000	Visualization
+## בדיקות (Testing)
+מודול הבדיקות משמש לאימות הפונקציות השונות של האפליקציה, על מנת לוודא שהכל פועל כראוי.
+
+## פריסת אפליקציה (Application Deployment)
+פריסת האפליקציה מתבצעת באמצעות רכיבים אוטומטיים המבטיחים שהכל יתבצע בצורה חלקה וללא תקלות.
+
+## ממשק משתמש (User Interface)
+ממשק המשתמש עוצב כך שיהיה ידידותי וברור, המאפשר למשתמשים לגשת בקלות לפונקציות השונות.
+
+## אבטחה (Security)
+אבטחת המידע והגנה על הנתונים של המשתמשים היא בראש סדר העדיפויות שלנו, וכוללת הגנות מתקדמות נגד מתקפות שונות.
+
+
+## סיכום
+אפליקציית Octopus מספקת פיתרון יעיל ומקיף שכולל את כל הרכיבים הנדרשים לניהול פרויקטים בצורה היעילה ביותר.
