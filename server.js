@@ -18,6 +18,23 @@ const itemsGauge = new client.Gauge({
   name: 'inventory_items_count',
   help: 'Total number of unique items in the inventory'
 });
+// המדד החדש עם Labels
+const stockGauge = new client.Gauge({
+  name: 'inventory_stock_quantity',
+  help: 'Quantity of specific item in stock',
+  labelNames: ['name'] 
+});
+
+// פונקציית עזר שמעדכנת את כל הנתונים בבת אחת
+async function updatePrometheusMetrics() {
+    const items = await Item.find();
+    items.forEach(item => {
+        // מעדכן את המלאי לכל פריט לפי השם שלו
+        stockGauge.set({ name: item.name }, item.qty);
+    });
+    // מעדכן את סך כל סוגי הפריטים
+    itemsGauge.set(items.length);
+}
 // -----------------------------------------------
 
 app.use(express.json());
@@ -25,10 +42,10 @@ app.use(express.json());
 // MongoDB Connection
 const mongoURI = process.env.MONGO_URI || 'mongodb+srv://octopus_user:YJpn6ZTdPdIbNBXq@danielmongo.3yle095.mongodb.net/test?retryWrites=true&w=majority&appName=danielMongo';
 mongoose.connect(mongoURI)
-    .then(() => {
+ .then(() => {
         console.log('Connected to MongoDB Atlas');
-        // עדכון המדד הראשוני
-        Item.countDocuments().then(count => itemsGauge.set(count));
+        // קריאה לפונקציה החדשה שטוענת את כל השמות והכמויות מיד עם החיבור
+        updatePrometheusMetrics(); 
     })
     .catch(err => console.error('MongoDB connection error:', err));
 
@@ -159,7 +176,8 @@ app.post('/api/save', async (req, res) => {
     const { id, newQty } = req.body;
     await Item.updateOne({ _id: Number(id) }, { $set: { qty: Math.max(0, newQty) } });
     
-    updatesCounter.inc(); // לוגיקת הניטור
+    await updatePrometheusMetrics(); // <--- זה השורה שמעדכנת את הגרפים
+    updatesCounter.inc(); 
     res.sendStatus(200);
 });
 
@@ -169,17 +187,16 @@ app.post('/api/add', async (req, res) => {
         const newItem = new Item({ _id: Number(sku), name, qty, idealStock, rating });
         await newItem.save();
         
-        const count = await Item.countDocuments();
-        itemsGauge.set(count); // לוגיקת הניטור
-        
+        await updatePrometheusMetrics(); // <--- במקום itemsGauge.set הישן
         res.sendStatus(201);
     } catch (err) { res.status(400).json({ message: err.message }); }
 });
 
 app.delete('/api/delete/:id', async (req, res) => {
     await Item.deleteOne({ _id: Number(req.params.id) });
-    const count = await Item.countDocuments();
-    itemsGauge.set(count); // לוגיקת הניטור
+    
+    stockGauge.reset(); // מאפס מדדים קודמים כדי שלא יהיו כפילויות
+    await updatePrometheusMetrics(); // <--- מעדכן את הרשימה החדשה
     res.sendStatus(200);
 });
 
