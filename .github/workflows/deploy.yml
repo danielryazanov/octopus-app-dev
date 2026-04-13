@@ -1,4 +1,4 @@
-name: CI/CD to AWS
+name: CI/CD Final Step-by-Step
 
 on:
   push:
@@ -17,7 +17,7 @@ jobs:
           username: ${{ secrets.DOCKER_USERNAME }}
           password: ${{ secrets.DOCKER_PASSWORD }}
 
-      - name: Build and push Docker image
+      - name: Build and push
         run: |
           docker build -t ${{ secrets.DOCKER_USERNAME }}/octopus-app:latest .
           docker push ${{ secrets.DOCKER_USERNAME }}/octopus-app:latest
@@ -33,39 +33,28 @@ jobs:
           username: ubuntu
           key: ${{ secrets.SSH_PRIVATE_KEY }}
           script: |
-            # 1. הסרת גרסה ישנה ובעייתית של Docker Compose (שגורמת ל-KeyError)
-            sudo apt-get remove -y docker-compose || true
-
-            # 2. התקנת Docker (במידה וחסר)
-            if ! command -v docker &> /dev/null; then
-              sudo apt-get update
-              sudo apt-get install -y docker.io
-              sudo systemctl start docker
-              sudo systemctl enable docker
-              sudo usermod -aG docker ubuntu
+            # 1. התקנת Docker Compose V2 אם חסר
+            if ! command -v docker-compose &> /dev/null; then
+              sudo curl -L "https://github.com/docker/compose/releases/latest/download/docker-compose-$(uname -s)-$(uname -m)" -o /usr/local/bin/docker-compose
+              sudo chmod +x /usr/local/bin/docker-compose
             fi
 
-            # 3. התקנה נקייה של Docker Compose V2 החדש ביותר
-            sudo curl -L "https://github.com/docker/compose/releases/latest/download/docker-compose-$(uname -s)-$(uname -m)" -o /usr/local/bin/docker-compose
-            sudo chmod +x /usr/local/bin/docker-compose
-
-            # 4. הכנת תיקיית האפליקציה בשרת
+            # 2. כניסה לתיקייה
             mkdir -p ~/app
             cd ~/app
 
-            # 5. יצירת קובץ ה-docker-compose.yaml בשרת
+            # 3. יצירת ה-Compose (בגרסה מודרנית ללא ה-Warning)
             cat <<EOF > docker-compose.yaml
-            version: '3.8'
             services:
               app:
                 image: ${{ secrets.DOCKER_USERNAME }}/octopus-app:latest
+                restart: always
                 ports:
                   - "80:3000"
                 environment:
                   - MONGO_URI=mongodb://db:27017/fruitsDB
                 depends_on:
                   - db
-                restart: always
               db:
                 image: mongo:latest
                 container_name: mongodb
@@ -76,7 +65,10 @@ jobs:
               mongodb_data:
             EOF
 
-            # 6. הרצה מנצחת (שימוש בנתיב המלא כדי לוודא שמשתמשים בגרסה החדשה)
-            sudo /usr/local/bin/docker-compose down || true
+            # 4. ניקוי יסודי של השרת מקונטיינרים קודמים (פותר את שגיאת ה-Conflict)
+            sudo /usr/local/bin/docker-compose down --remove-orphans || true
+            sudo docker rm -f mongodb octopus-app || true
+
+            # 5. הרצה נקייה
             sudo /usr/local/bin/docker-compose pull
             sudo /usr/local/bin/docker-compose up -d
