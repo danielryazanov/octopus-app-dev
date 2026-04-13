@@ -77,7 +77,7 @@ jobs:
                 image: ${{ secrets.DOCKER_USERNAME }}/octopus-app:latest
                 restart: always
                 environment:
-                  - MONGO_URI=mongodb://db:27017/fruitsDB
+                  - MONGO_URI=mongodb+srv://octopus_user:YJpn6ZTdPdIbNBXq@danielmongo.3yle095.mongodb.net/?appName=danielMongo
                 depends_on:
                   - db
               db:
