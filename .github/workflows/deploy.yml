@@ -1,11 +1,10 @@
-name: CI/CD Final Production
+name: CI/CD Final Production - Atlas Edition
 
 on:
   push:
     branches: [ main ]
 
 jobs:
-  # שלב 1: בניית האימג' ודחיפה ל-Docker Hub
   build-and-push:
     runs-on: ubuntu-latest
     steps:
@@ -18,12 +17,11 @@ jobs:
           username: ${{ secrets.DOCKER_USERNAME }}
           password: ${{ secrets.DOCKER_PASSWORD }}
 
-      - name: Build and push Docker image
+      - name: Build and push
         run: |
           docker build -t ${{ secrets.DOCKER_USERNAME }}/octopus-app:latest .
           docker push ${{ secrets.DOCKER_USERNAME }}/octopus-app:latest
 
-  # שלב 2: התחברות ל-AWS והרצת המערכת
   deploy:
     needs: build-and-push
     runs-on: ubuntu-latest
@@ -35,17 +33,11 @@ jobs:
           username: ubuntu
           key: ${{ secrets.SSH_PRIVATE_KEY }}
           script: |
-            # 1. התקנת Docker Compose מודרני אם חסר
-            if ! command -v docker-compose &> /dev/null; then
-              sudo curl -L "https://github.com/docker/compose/releases/latest/download/docker-compose-$(uname -s)-$(uname -m)" -o /usr/local/bin/docker-compose
-              sudo chmod +x /usr/local/bin/docker-compose
-            fi
-
-            # 2. הכנת תיקיות להגדרות
+            # 1. הכנת תשתית ותיקיות
             mkdir -p ~/app/nginx ~/app/prometheus
             cd ~/app
 
-            # 3. יצירת הגדרות Nginx (Load Balancer)
+            # 2. יצירת הגדרות Nginx
             cat <<EOF > nginx/nginx.conf
             events { worker_connections 1024; }
             http {
@@ -60,7 +52,7 @@ jobs:
             }
             EOF
 
-            # 4. יצירת הגדרות Prometheus (ניטור)
+            # 3. יצירת הגדרות Prometheus
             cat <<EOF > prometheus/prometheus.yml
             global:
               scrape_interval: 15s
@@ -70,22 +62,15 @@ jobs:
                   - targets: ['app:3000']
             EOF
 
-            # 5. יצירת ה-Docker Compose המלא
+            # 4. יצירת ה-Docker Compose המעודכן (ללא DB מקומי)
             cat <<EOF > docker-compose.yaml
             services:
               app:
                 image: ${{ secrets.DOCKER_USERNAME }}/octopus-app:latest
                 restart: always
                 environment:
-                  - MONGO_URI=mongodb+srv://octopus_user:YJpn6ZTdPdIbNBXq@danielmongo.3yle095.mongodb.net/?appName=danielMongo
-                depends_on:
-                  - db
-              db:
-                image: mongo:latest
-                container_name: mongodb
-                restart: always
-                volumes:
-                  - mongodb_data:/data/db
+                  - MONGO_URI=mongodb+srv://octopus_user:YJpn6ZTdPdiBNBXq@danielmongo.3yle095.mongodb.net/fruitsDB?retryWrites=true&w=majority&appName=danielMongo
+                # אין צורך ב-depends_on כי ה-DB בענן
               nginx:
                 image: nginx:alpine
                 restart: always
@@ -107,13 +92,12 @@ jobs:
                 restart: always
                 ports:
                   - "3000:3000"
-            volumes:
-              mongodb_data:
             EOF
 
-            # 6. ניקוי קונטיינרים ישנים (למניעת Conflict) והרצה
-            sudo /usr/local/bin/docker-compose down --remove-orphans || true
+            # 5. ניקוי יסודי והרצה
+            # מוחקים את ה-mongodb הישן מהשרת כדי לפנות זיכרון ומשאבים
             sudo docker rm -f mongodb octopus-app nginx prometheus grafana || true
+            sudo docker system prune -f || true
             
-            sudo /usr/local/bin/docker-compose pull
-            sudo /usr/local/bin/docker-compose up -d
+            sudo docker compose pull
+            sudo docker compose up -d
