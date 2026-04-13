@@ -33,33 +33,70 @@ jobs:
           username: ubuntu
           key: ${{ secrets.SSH_PRIVATE_KEY }}
           script: |
-            # 1. התקנת Docker Compose אם חסר
-            if ! command -v docker-compose &> /dev/null; then
+            # 1. התקנת Docker ו-Docker Compose אם הם חסרים בשרת
+            if ! command -v docker &> /dev/null; then
               sudo apt-get update
-              sudo apt-get install -y docker-compose
+              sudo apt-get install -y docker.io docker-compose
+              sudo systemctl start docker
+              sudo usermod -aG docker ubuntu
             fi
 
-            # 2. יצירת תיקיית פרויקט בשרת
-            mkdir -p ~/app
+            # 2. יצירת תיקיות הפרויקט בשרת
+            mkdir -p ~/app/nginx
             cd ~/app
 
-            # 3. יצירת קובץ docker-compose.yaml בשרת (שימוש ב-HERE DOC)
+            # 3. יצירת קובץ ה-docker-compose.yaml
             cat <<EOF > docker-compose.yaml
-            version: '3'
+            version: '3.8'
             services:
               app:
                 image: ${{ secrets.DOCKER_USERNAME }}/octopus-app:latest
-                ports:
-                  - "80:3000"
+                restart: always
                 environment:
-                  - MONGO_URI=mongodb://mongodb:27017/fruitsDB
+                  - MONGO_URI=mongodb://db:27017/fruitsDB
+                networks:
+                  - app-network
+                  - db-network
                 depends_on:
-                  - mongodb
-              mongodb:
+                  - db
+              db:
                 image: mongo:latest
-                container_name: mongodb
+                restart: always
+                networks:
+                  - db-network
+              nginx:
+                image: nginx:alpine
+                restart: always
+                ports:
+                  - "80:80"
+                volumes:
+                  - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+                networks:
+                  - app-network
+                depends_on:
+                  - app
+            networks:
+              app-network:
+              db-network:
             EOF
 
-            # 4. הרצת המערכת
+            # 4. יצירת קובץ הגדרות ה-Nginx (פותר את בעיית הניתוב)
+            cat <<EOF > nginx/nginx.conf
+            events {
+                worker_connections 1024;
+            }
+            http {
+                server {
+                    listen 80;
+                    location / {
+                        proxy_pass http://app:3000;
+                        proxy_set_header Host \$host;
+                        proxy_set_header X-Real-IP \$remote_addr;
+                    }
+                }
+            }
+            EOF
+
+            # 5. הרצה מנצחת של המערכת
             sudo docker-compose pull
             sudo docker-compose up -d
