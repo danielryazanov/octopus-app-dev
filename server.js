@@ -16,9 +16,12 @@ mongoose.connect(mongoURI)
     .then(() => console.log('Connected to MongoDB Atlas'))
     .catch(err => console.error('MongoDB connection error:', err));
 
-// Schema מעודכן - המק"ט הוא ה-ID
+// Schema מעודכן - המק"ט חייב להיות מספר ייחודי
 const itemSchema = new mongoose.Schema({
-    _id: { type: String, required: true }, // המק"ט (SKU)
+    _id: { 
+        type: Number, 
+        required: true 
+    }, 
     name: { 
         type: String, 
         required: true,
@@ -47,21 +50,21 @@ function getStarsHTML(rating) {
 
 app.get('/', async (req, res) => {
     try {
-        const items = await Item.find();
+        const items = await Item.find().sort({ _id: 1 }); // מיון לפי מק"ט
         let rows = items.map(item => `
             <div style="border-bottom: 1px solid #eee; padding: 15px; display: flex; align-items: center; justify-content: space-between; width: 750px; background: white; margin-bottom: 5px; border-radius: 8px;">
-                <div style="width: 100px; color: #888; font-size: 0.8em;">מק"ט: ${item._id}</div>
+                <div style="width: 100px; color: #888; font-size: 0.9em;"><strong>מק"ט: ${item._id}</strong></div>
                 <div style="width: 120px;"><strong>${item.name}</strong></div>
                 <div style="width: 120px; color: #f39c12;">${getStarsHTML(item.rating)} (${item.rating})</div>
                 <div style="color: #666; font-size: 0.85em;">יעד: <span id="ideal-${item._id}">${item.idealStock}</span>*</div>
                 <div style="display: flex; align-items: center;">
-                    <button onclick="updateQty('${item._id}', -1)" style="padding: 5px 10px;">-</button>
+                    <button onclick="updateQty(${item._id}, -1)" style="padding: 5px 10px; cursor: pointer;">-</button>
                     <span id="qty-${item._id}" style="margin: 0 10px; font-weight: bold; width: 25px; text-align: center;">${item.qty}</span>
-                    <button onclick="updateQty('${item._id}', 1)" style="padding: 5px 10px;">+</button>
+                    <button onclick="updateQty(${item._id}, 1)" style="padding: 5px 10px; cursor: pointer;">+</button>
                 </div>
                 <div style="display: flex; gap: 5px;">
-                    <button onclick="saveQty('${item._id}')" style="background: #28a745; color: white; border: none; padding: 8px 12px; cursor: pointer; border-radius: 4px;">שמור</button>
-                    <button onclick="deleteItem('${item._id}')" style="background: #dc3545; color: white; border: none; padding: 8px 12px; cursor: pointer; border-radius: 4px;">מחק</button>
+                    <button onclick="saveQty(${item._id})" style="background: #28a745; color: white; border: none; padding: 8px 12px; cursor: pointer; border-radius: 4px; font-weight: bold;">שמור</button>
+                    <button onclick="deleteItem(${item._id})" style="background: #dc3545; color: white; border: none; padding: 8px 12px; cursor: pointer; border-radius: 4px;">מחק</button>
                 </div>
             </div>
         `).join('');
@@ -83,7 +86,7 @@ app.get('/', async (req, res) => {
                 <div class="form-box">
                     <h3>➕ הוספת מוצר חדש</h3>
                     <div style="display: flex; flex-wrap: wrap; gap: 10px;">
-                        <input type="text" id="newSku" placeholder="מק"ט (ID ייחודי)" style="width: 20%;">
+                        <input type="number" id="newSku" placeholder="מק"ט (מספר בלבד)" style="width: 20%;">
                         <input type="text" id="newName" placeholder="שם הפריט" style="width: 40%;">
                         <select id="newRating" style="width: 30%;">
                             <option value="0">בחר דירוג</option>
@@ -94,7 +97,7 @@ app.get('/', async (req, res) => {
                     </div>
                     <button class="btn-add" onclick="addNewItem()" style="margin-top:15px;">הוסף למערכת</button>
                 </div>
-                <div id="inventory-list">${rows}</div>
+                <div id="inventory-list">${rows || '<p>אין נתונים להצגה.</p>'}</div>
 
                 <script>
                     function updateQty(id, change) {
@@ -105,29 +108,30 @@ app.get('/', async (req, res) => {
 
                     async function saveQty(id) {
                         const current = parseInt(document.getElementById('qty-' + id).innerText);
-                        await fetch('/api/save', {
+                        const response = await fetch('/api/save', {
                             method: 'POST',
                             headers: { 'Content-Type': 'application/json' },
                             body: JSON.stringify({ id, newQty: current })
                         });
-                        alert('עודכן!');
+                        if (response.ok) alert('המלאי עבור מק"ט ' + id + ' עודכן!');
                     }
 
                     async function deleteItem(id) {
-                        if (confirm('למחוק?')) {
+                        if (confirm('למחוק את מק"ט ' + id + '?')) {
                             await fetch('/api/delete/' + id, { method: 'DELETE' });
                             location.reload();
                         }
                     }
 
                     async function addNewItem() {
-                        const sku = document.getElementById('newSku').value;
+                        const sku = parseInt(document.getElementById('newSku').value);
                         const name = document.getElementById('newName').value;
                         const rating = parseFloat(document.getElementById('newRating').value);
                         const current = parseInt(document.getElementById('newCurrent').value);
                         const ideal = parseInt(document.getElementById('newIdeal').value);
 
-                        if (!sku || !name || /[0-9]/.test(name)) return alert('בדוק מק"ט ושם (אותיות בלבד)');
+                        if (isNaN(sku)) return alert('שגיאה: מק"ט חייב להיות מספר!');
+                        if (!name || /[0-9]/.test(name)) return alert('שגיאה: שם חייב להכיל אותיות בלבד!');
                         if (current < 0 || ideal < 0) return alert('אין להזין מספרים שליליים');
 
                         const response = await fetch('/api/add', {
@@ -135,8 +139,13 @@ app.get('/', async (req, res) => {
                             headers: { 'Content-Type': 'application/json' },
                             body: JSON.stringify({ sku, name, qty: current, idealStock: ideal, rating })
                         });
-                        if (response.ok) location.reload();
-                        else alert('שגיאה: ייתכן והמק"ט כבר קיים');
+                        
+                        if (response.ok) {
+                            location.reload();
+                        } else {
+                            const data = await response.json();
+                            alert('שגיאה: ' + (data.message.includes('duplicate') ? 'המק"ט כבר קיים במערכת!' : data.message));
+                        }
                     }
                 </script>
             </body>
@@ -147,22 +156,24 @@ app.get('/', async (req, res) => {
 
 app.post('/api/save', async (req, res) => {
     const { id, newQty } = req.body;
-    await Item.updateOne({ _id: id }, { $set: { qty: Math.max(0, newQty) } });
+    await Item.updateOne({ _id: Number(id) }, { $set: { qty: Math.max(0, newQty) } });
     res.sendStatus(200);
 });
 
 app.post('/api/add', async (req, res) => {
     try {
         const { sku, name, qty, idealStock, rating } = req.body;
-        const newItem = new Item({ _id: sku, name, qty, idealStock, rating });
+        const newItem = new Item({ _id: Number(sku), name, qty, idealStock, rating });
         await newItem.save();
         res.sendStatus(201);
-    } catch (err) { res.status(400).json({ message: err.message }); }
+    } catch (err) { 
+        res.status(400).json({ message: err.message }); 
+    }
 });
 
 app.delete('/api/delete/:id', async (req, res) => {
-    await Item.deleteOne({ _id: req.params.id });
+    await Item.deleteOne({ _id: Number(req.params.id) });
     res.sendStatus(200);
 });
 
-app.listen(PORT, () => console.log(`Running on ${PORT}`));
+app.listen(PORT, () => console.log(`Octopus Pro running on ${PORT}`));
