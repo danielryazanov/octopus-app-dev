@@ -42,8 +42,12 @@ const ADMIN_USER=process.env.ADMIN_USER;
 const ADMIN_PASS=process.env.ADMIN_PASS;
 
 const authMiddleware = (req, res, next) => {
-    // הוכחת Load Balancer: מדפיס ללוג את המזהה של הקונטיינר שעונה כרגע
-    console.log(`[LB Check] Request handled by container: ${os.hostname()}`);
+    // החרגה של נתיב המדדים - שפרומתאוס יוכל לקרוא אותם
+    if (req.path === '/metrics' || req.path === '/whoami') {
+        return next();
+    }
+
+    console.log(`[LB Check] Request handled by: ${os.hostname()}`);
 
     const authHeader = req.headers.authorization;
 
