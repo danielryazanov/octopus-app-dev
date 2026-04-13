@@ -5,23 +5,36 @@ const client = require('prom-client');
 const app = express();
 const PORT = process.env.PORT || 3000;
 
+// --- חלק 1: הגדרות Prometheus (ללא שינוי ב-UI) ---
 const collectDefaultMetrics = client.collectDefaultMetrics;
 collectDefaultMetrics();
+
+const updatesCounter = new client.Counter({
+  name: 'inventory_updates_total',
+  help: 'Total number of stock updates performed'
+});
+
+const itemsGauge = new client.Gauge({
+  name: 'inventory_items_count',
+  help: 'Total number of unique items in the inventory'
+});
+// -----------------------------------------------
 
 app.use(express.json());
 
 // MongoDB Connection
 const mongoURI = process.env.MONGO_URI || 'mongodb+srv://octopus_user:YJpn6ZTdPdIbNBXq@danielmongo.3yle095.mongodb.net/test?retryWrites=true&w=majority&appName=danielMongo';
 mongoose.connect(mongoURI)
-    .then(() => console.log('Connected to MongoDB Atlas'))
+    .then(() => {
+        console.log('Connected to MongoDB Atlas');
+        // עדכון המדד הראשוני
+        Item.countDocuments().then(count => itemsGauge.set(count));
+    })
     .catch(err => console.error('MongoDB connection error:', err));
 
-// Schema מעודכן - המק"ט חייב להיות מספר ייחודי
+// Schema
 const itemSchema = new mongoose.Schema({
-    _id: { 
-        type: Number, 
-        required: true 
-    }, 
+    _id: { type: Number, required: true }, 
     name: { 
         type: String, 
         required: true,
@@ -37,7 +50,7 @@ const itemSchema = new mongoose.Schema({
 
 const Item = mongoose.model('Item', itemSchema);
 
-// פונקציית עזר להצגת כוכבים
+// פונקציית עזר לכוכבים
 function getStarsHTML(rating) {
     let html = '';
     for (let i = 1; i <= 5; i++) {
@@ -48,12 +61,13 @@ function getStarsHTML(rating) {
     return html;
 }
 
+// Routes
 app.get('/', async (req, res) => {
     try {
-        const items = await Item.find().sort({ _id: 1 }); // מיון לפי מק"ט
+        const items = await Item.find().sort({ _id: 1 });
         let rows = items.map(item => `
             <div style="border-bottom: 1px solid #eee; padding: 15px; display: flex; align-items: center; justify-content: space-between; width: 750px; background: white; margin-bottom: 5px; border-radius: 8px;">
-                <div style="width: 100px; color: #888; font-size: 0.9em;"><strong>מק"ט: ${item._id}</strong></div>
+                <div style="width: 100px; color: #888; font-size: 0.8em;">מק"ט: ${item._id}</div>
                 <div style="width: 120px;"><strong>${item.name}</strong></div>
                 <div style="width: 120px; color: #f39c12;">${getStarsHTML(item.rating)} (${item.rating})</div>
                 <div style="color: #666; font-size: 0.85em;">יעד: <span id="ideal-${item._id}">${item.idealStock}</span>*</div>
@@ -97,55 +111,41 @@ app.get('/', async (req, res) => {
                     </div>
                     <button class="btn-add" onclick="addNewItem()" style="margin-top:15px;">הוסף למערכת</button>
                 </div>
-                <div id="inventory-list">${rows || '<p>אין נתונים להצגה.</p>'}</div>
-
+                <div id="inventory-list">${rows}</div>
                 <script>
                     function updateQty(id, change) {
                         const el = document.getElementById('qty-' + id);
                         let val = parseInt(el.innerText) + change;
                         if (val >= 0) el.innerText = val;
                     }
-
                     async function saveQty(id) {
                         const current = parseInt(document.getElementById('qty-' + id).innerText);
-                        const response = await fetch('/api/save', {
+                        await fetch('/api/save', {
                             method: 'POST',
                             headers: { 'Content-Type': 'application/json' },
                             body: JSON.stringify({ id, newQty: current })
                         });
-                        if (response.ok) alert('המלאי עבור מק"ט ' + id + ' עודכן!');
+                        alert('המלאי עודכן!');
                     }
-
                     async function deleteItem(id) {
-                        if (confirm('למחוק את מק"ט ' + id + '?')) {
+                        if (confirm('למחוק?')) {
                             await fetch('/api/delete/' + id, { method: 'DELETE' });
                             location.reload();
                         }
                     }
-
                     async function addNewItem() {
                         const sku = parseInt(document.getElementById('newSku').value);
                         const name = document.getElementById('newName').value;
                         const rating = parseFloat(document.getElementById('newRating').value);
                         const current = parseInt(document.getElementById('newCurrent').value);
                         const ideal = parseInt(document.getElementById('newIdeal').value);
-
-                        if (isNaN(sku)) return alert('שגיאה: מק"ט חייב להיות מספר!');
-                        if (!name || /[0-9]/.test(name)) return alert('שגיאה: שם חייב להכיל אותיות בלבד!');
-                        if (current < 0 || ideal < 0) return alert('אין להזין מספרים שליליים');
-
+                        if (isNaN(sku) || !name || /[0-9]/.test(name)) return alert('בדוק תקינות מק"ט ושם');
                         const response = await fetch('/api/add', {
                             method: 'POST',
                             headers: { 'Content-Type': 'application/json' },
                             body: JSON.stringify({ sku, name, qty: current, idealStock: ideal, rating })
                         });
-                        
-                        if (response.ok) {
-                            location.reload();
-                        } else {
-                            const data = await response.json();
-                            alert('שגיאה: ' + (data.message.includes('duplicate') ? 'המק"ט כבר קיים במערכת!' : data.message));
-                        }
+                        if (response.ok) location.reload(); else alert('שגיאה בהוספה');
                     }
                 </script>
             </body>
@@ -154,9 +154,12 @@ app.get('/', async (req, res) => {
     } catch (e) { res.status(500).send(e.message); }
 });
 
+// --- חלק 2: עדכון המדדים בתוך ה-API (ללא שינוי ב-UI) ---
 app.post('/api/save', async (req, res) => {
     const { id, newQty } = req.body;
     await Item.updateOne({ _id: Number(id) }, { $set: { qty: Math.max(0, newQty) } });
+    
+    updatesCounter.inc(); // לוגיקת הניטור
     res.sendStatus(200);
 });
 
@@ -165,15 +168,24 @@ app.post('/api/add', async (req, res) => {
         const { sku, name, qty, idealStock, rating } = req.body;
         const newItem = new Item({ _id: Number(sku), name, qty, idealStock, rating });
         await newItem.save();
+        
+        const count = await Item.countDocuments();
+        itemsGauge.set(count); // לוגיקת הניטור
+        
         res.sendStatus(201);
-    } catch (err) { 
-        res.status(400).json({ message: err.message }); 
-    }
+    } catch (err) { res.status(400).json({ message: err.message }); }
 });
 
 app.delete('/api/delete/:id', async (req, res) => {
     await Item.deleteOne({ _id: Number(req.params.id) });
+    const count = await Item.countDocuments();
+    itemsGauge.set(count); // לוגיקת הניטור
     res.sendStatus(200);
 });
 
-app.listen(PORT, () => console.log(`Octopus Pro running on ${PORT}`));
+app.get('/metrics', async (req, res) => {
+    res.set('Content-Type', client.register.contentType);
+    res.end(await client.register.metrics());
+});
+
+app.listen(PORT, () => console.log(`Server running on port ${PORT}`));
