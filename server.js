@@ -5,7 +5,6 @@ const client = require('prom-client');
 const app = express();
 const PORT = process.env.PORT || 3000;
 
-// Prometheus Setup
 const collectDefaultMetrics = client.collectDefaultMetrics;
 collectDefaultMetrics();
 
@@ -17,159 +16,153 @@ mongoose.connect(mongoURI)
     .then(() => console.log('Connected to MongoDB Atlas'))
     .catch(err => console.error('MongoDB connection error:', err));
 
-// Schema קשוח עם וולידציה חזקה
+// Schema מעודכן - המק"ט הוא ה-ID
 const itemSchema = new mongoose.Schema({
-    _id: mongoose.Schema.Types.Mixed, 
+    _id: { type: String, required: true }, // המק"ט (SKU)
     name: { 
         type: String, 
         required: true,
         validate: {
-            // בודק שאין מספרים בכלל בשם
             validator: function(v) { return /^[a-zA-Zא-ת\s]+$/.test(v) && !/[0-9]/.test(v); },
-            message: "שם חייב להכיל אותיות בלבד ללא מספרים!"
+            message: "שם חייב להכיל אותיות בלבד!"
         }
     },
     qty: { type: Number, min: 0, default: 0 },
-    idealStock: { type: Number, min: 0, default: 10 }
+    idealStock: { type: Number, min: 0, default: 10 },
+    rating: { type: Number, min: 0, max: 5, default: 0 }
 }, { collection: 'fruits', versionKey: false });
 
 const Item = mongoose.model('Item', itemSchema);
 
-// Routes
+// פונקציית עזר להצגת כוכבים
+function getStarsHTML(rating) {
+    let html = '';
+    for (let i = 1; i <= 5; i++) {
+        if (rating >= i) html += '⭐';
+        else if (rating >= i - 0.5) html += '🌗';
+        else html += '☆';
+    }
+    return html;
+}
+
 app.get('/', async (req, res) => {
     try {
         const items = await Item.find();
         let rows = items.map(item => `
-            <div style="border-bottom: 1px solid #eee; padding: 15px; display: flex; align-items: center; justify-content: space-between; width: 650px; background: white; margin-bottom: 5px; border-radius: 8px;">
-                <div style="width: 140px;"><strong style="font-size: 1.1em;">${item.name}</strong></div>
-                <div style="color: #666; font-size: 0.85em;">יעד: <span id="ideal-${item._id}">${item.idealStock || 10}</span>*</div>
+            <div style="border-bottom: 1px solid #eee; padding: 15px; display: flex; align-items: center; justify-content: space-between; width: 750px; background: white; margin-bottom: 5px; border-radius: 8px;">
+                <div style="width: 100px; color: #888; font-size: 0.8em;">מק"ט: ${item._id}</div>
+                <div style="width: 120px;"><strong>${item.name}</strong></div>
+                <div style="width: 120px; color: #f39c12;">${getStarsHTML(item.rating)} (${item.rating})</div>
+                <div style="color: #666; font-size: 0.85em;">יעד: <span id="ideal-${item._id}">${item.idealStock}</span>*</div>
                 <div style="display: flex; align-items: center;">
-                    <button onclick="updateQty('${item._id}', -1)" style="padding: 5px 12px; cursor: pointer;">-</button>
-                    <span id="qty-${item._id}" style="margin: 0 15px; font-weight: bold; width: 30px; text-align: center;">${item.qty || 0}</span>
-                    <button onclick="updateQty('${item._id}', 1)" style="padding: 5px 12px; cursor: pointer;">+</button>
+                    <button onclick="updateQty('${item._id}', -1)" style="padding: 5px 10px;">-</button>
+                    <span id="qty-${item._id}" style="margin: 0 10px; font-weight: bold; width: 25px; text-align: center;">${item.qty}</span>
+                    <button onclick="updateQty('${item._id}', 1)" style="padding: 5px 10px;">+</button>
                 </div>
                 <div style="display: flex; gap: 5px;">
-                    <button id="btn-${item._id}" onclick="saveQty('${item._id}')" style="background: #28a745; color: white; border: none; padding: 8px 12px; cursor: pointer; border-radius: 4px; font-weight: bold;">שמור</button>
-                    <button onclick="deleteItem('${item._id}')" style="background: #dc3545; color: white; border: none; padding: 8px 12px; cursor: pointer; border-radius: 4px;">מחק 🗑️</button>
+                    <button onclick="saveQty('${item._id}')" style="background: #28a745; color: white; border: none; padding: 8px 12px; cursor: pointer; border-radius: 4px;">שמור</button>
+                    <button onclick="deleteItem('${item._id}')" style="background: #dc3545; color: white; border: none; padding: 8px 12px; cursor: pointer; border-radius: 4px;">מחק</button>
                 </div>
             </div>
         `).join('');
 
         res.send(`
-            <html>
-                <head>
-                    <title>Octopus Pro Inventory</title>
-                    <meta charset="UTF-8">
-                    <style>
-                        body { font-family: system-ui; background: #f0f2f5; display: flex; flex-direction: column; align-items: center; padding: 40px; direction: rtl; }
-                        .form-box { background: white; padding: 25px; border-radius: 12px; box-shadow: 0 4px 15px rgba(0,0,0,0.05); margin-bottom: 30px; width: 650px; }
-                        input { padding: 12px; margin: 5px; border: 1px solid #ddd; border-radius: 6px; font-size: 14px; }
-                        .btn-add { background: #007bff; color: white; border: none; padding: 12px; cursor: pointer; width: 100%; border-radius: 6px; font-weight: bold; margin-top: 10px; }
-                    </style>
-                </head>
-                <body>
+            <html dir="rtl">
+            <head>
+                <meta charset="UTF-8">
+                <style>
+                    body { font-family: system-ui; background: #f0f2f5; display: flex; flex-direction: column; align-items: center; padding: 20px; }
+                    .form-box { background: white; padding: 20px; border-radius: 12px; box-shadow: 0 4px 15px rgba(0,0,0,0.05); margin-bottom: 20px; width: 750px; }
+                    input, select { padding: 10px; margin: 5px; border: 1px solid #ddd; border-radius: 6px; }
+                    .btn-add { background: #007bff; color: white; border: none; padding: 12px; cursor: pointer; width: 100%; border-radius: 6px; font-weight: bold; }
+                </style>
+            </head>
+            <body>
                     <h1>hello world 🍎</h1>
                     <h2>ניהול מלאי חכם Octopus 🛒</h2>
-                    <div class="form-box">
-                        <h3 style="margin-top: 0;">➕ הוספת מוצר חדש</h3>
-                        <input type="text" id="newName" placeholder="שם הפריט (אותיות בלבד)" style="width: 96%;">
-                        <div style="display: flex; gap: 10px;">
-                            <input type="number" id="newCurrent" min="0" placeholder="כמות נוכחית" style="width: 50%;">
-                            <input type="number" id="newIdeal" min="0" placeholder="כמות אידיאלית" style="width: 50%;">
-                        </div>
-                        <button class="btn-add" onclick="addNewItem()">הוסף למלאי</button>
+                <div class="form-box">
+                    <h3>➕ הוספת מוצר חדש</h3>
+                    <div style="display: flex; flex-wrap: wrap; gap: 10px;">
+                        <input type="text" id="newSku" placeholder="מק"ט (ID ייחודי)" style="width: 20%;">
+                        <input type="text" id="newName" placeholder="שם הפריט" style="width: 40%;">
+                        <select id="newRating" style="width: 30%;">
+                            <option value="0">בחר דירוג</option>
+                            ${[0.5, 1, 1.5, 2, 2.5, 3, 3.5, 4, 4.5, 5].map(r => `<option value="${r}">${r} כוכבים</option>`).join('')}
+                        </select>
+                        <input type="number" id="newCurrent" min="0" placeholder="מלאי" style="width: 47%;">
+                        <input type="number" id="newIdeal" min="0" placeholder="יעד" style="width: 47%;">
                     </div>
-                    <div id="inventory-list">${rows || '<p>אין מוצרים במלאי.</p>'}</div>
+                    <button class="btn-add" onclick="addNewItem()" style="margin-top:15px;">הוסף למערכת</button>
+                </div>
+                <div id="inventory-list">${rows}</div>
 
-                    <script>
-                        function updateQty(id, change) {
-                            const el = document.getElementById('qty-' + id);
-                            let val = parseInt(el.innerText) + change;
-                            if (val >= 0) el.innerText = val;
+                <script>
+                    function updateQty(id, change) {
+                        const el = document.getElementById('qty-' + id);
+                        let val = parseInt(el.innerText) + change;
+                        if (val >= 0) el.innerText = val;
+                    }
+
+                    async function saveQty(id) {
+                        const current = parseInt(document.getElementById('qty-' + id).innerText);
+                        await fetch('/api/save', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ id, newQty: current })
+                        });
+                        alert('עודכן!');
+                    }
+
+                    async function deleteItem(id) {
+                        if (confirm('למחוק?')) {
+                            await fetch('/api/delete/' + id, { method: 'DELETE' });
+                            location.reload();
                         }
+                    }
 
-                        async function saveQty(id) {
-                            const current = parseInt(document.getElementById('qty-' + id).innerText);
-                            const ideal = parseInt(document.getElementById('ideal-' + id).innerText);
-                            if (current > ideal) alert('שים לב: חריגה של ' + (current - ideal) + ' מהיעד!');
-                            
-                            const response = await fetch('/api/save', {
-                                method: 'POST',
-                                headers: { 'Content-Type': 'application/json' },
-                                body: JSON.stringify({ id, newQty: current })
-                            });
-                            if (response.ok) alert('נשמר ב-Atlas!');
-                        }
+                    async function addNewItem() {
+                        const sku = document.getElementById('newSku').value;
+                        const name = document.getElementById('newName').value;
+                        const rating = parseFloat(document.getElementById('newRating').value);
+                        const current = parseInt(document.getElementById('newCurrent').value);
+                        const ideal = parseInt(document.getElementById('newIdeal').value);
 
-                        async function deleteItem(id) {
-                            if (!confirm('האם אתה בטוח שברצונך למחוק פריט זה?')) return;
-                            const response = await fetch('/api/delete/' + id, { method: 'DELETE' });
-                            if (response.ok) window.location.reload();
-                        }
+                        if (!sku || !name || /[0-9]/.test(name)) return alert('בדוק מק"ט ושם (אותיות בלבד)');
+                        if (current < 0 || ideal < 0) return alert('אין להזין מספרים שליליים');
 
-                        async function addNewItem() {
-                            const name = document.getElementById('newName').value;
-                            const current = parseInt(document.getElementById('newCurrent').value);
-                            const ideal = parseInt(document.getElementById('newIdeal').value);
-
-                            // בדיקה שאין מספרים בשם
-                            if (/[0-9]/.test(name) || !/^[a-zA-Zא-ת\\s]+$/.test(name)) {
-                                return alert('שגיאה: שם חייב להכיל אותיות בלבד ללא מספרים או תווים!');
-                            }
-                            if (isNaN(current) || isNaN(ideal) || current < 0 || ideal < 0) {
-                                return alert('שגיאה: כמויות חייבות להיות מספר חיובי!');
-                            }
-
-                            const response = await fetch('/api/add', {
-                                method: 'POST',
-                                headers: { 'Content-Type': 'application/json' },
-                                body: JSON.stringify({ name, qty: current, idealStock: ideal })
-                            });
-                            
-                            if (response.ok) window.location.reload();
-                            else {
-                                const err = await response.json();
-                                alert('שגיאה מהשרת: ' + err.message);
-                            }
-                        }
-                    </script>
-                </body>
+                        const response = await fetch('/api/add', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ sku, name, qty: current, idealStock: ideal, rating })
+                        });
+                        if (response.ok) location.reload();
+                        else alert('שגיאה: ייתכן והמק"ט כבר קיים');
+                    }
+                </script>
+            </body>
             </html>
         `);
-    } catch (e) { res.status(500).send("Error: " + e.message); }
+    } catch (e) { res.status(500).send(e.message); }
 });
 
-// API: עדכון
 app.post('/api/save', async (req, res) => {
     const { id, newQty } = req.body;
-    const queryId = isNaN(id) ? id : Number(id);
-    await Item.updateOne({ _id: queryId }, { $set: { qty: Math.max(0, newQty) } });
+    await Item.updateOne({ _id: id }, { $set: { qty: Math.max(0, newQty) } });
     res.sendStatus(200);
 });
 
-// API: הוספה
 app.post('/api/add', async (req, res) => {
     try {
-        const { name, qty, idealStock } = req.body;
-        // מונע כפילויות ID על ידי מתן ID אוטומטי של מונגו למוצרים חדשים
-        const newItem = new Item({ name, qty, idealStock });
+        const { sku, name, qty, idealStock, rating } = req.body;
+        const newItem = new Item({ _id: sku, name, qty, idealStock, rating });
         await newItem.save();
         res.sendStatus(201);
     } catch (err) { res.status(400).json({ message: err.message }); }
 });
 
-// API: מחיקה
 app.delete('/api/delete/:id', async (req, res) => {
-    try {
-        const queryId = isNaN(req.params.id) ? req.params.id : Number(req.params.id);
-        await Item.deleteOne({ _id: queryId });
-        res.sendStatus(200);
-    } catch (err) { res.status(500).send(err.message); }
+    await Item.deleteOne({ _id: req.params.id });
+    res.sendStatus(200);
 });
 
-app.get('/metrics', async (req, res) => {
-    res.set('Content-Type', client.register.contentType);
-    res.end(await client.register.metrics());
-});
-
-app.listen(PORT, () => console.log(`Server running on port ${PORT}`));
+app.listen(PORT, () => console.log(`Running on ${PORT}`));
