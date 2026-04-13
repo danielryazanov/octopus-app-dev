@@ -1,73 +1,137 @@
-# Octopus Project Documentation
+# 🐙 Project Octopus - AWS Inventory Management System
 
-## 1. Project Overview
-The Octopus project aims to provide a robust and scalable solution for managing cloud-based applications. Its main goals include improving deployment efficiency, ensuring application reliability, and providing comprehensive monitoring capabilities.
+## 🌐 Live Site Access
+- **URL:** http://13.50.17.24/
+- **Cloud Infrastructure:** AWS (EC2)
+- **Architecture:** High Availability Microservices
+- **Status:** Live & Monitored
 
-### Objectives:
-- Streamline the deployment process for microservices.
-- Enhance application resilience and availability.
-- Implement effective monitoring and alerting systems.
+## 📝 Project Overview
 
-## 2. System Architecture
-The Octopus architecture is based on modern cloud principles and includes the following components:
-- **Cloud Infrastructure:** Utilizes AWS/Azure for scalable resource provisioning.
-- **Load Balancing:** Employs Nginx to distribute traffic effectively across service replicas.
-- **Microservices:** Each service is independent, allowing for easier scaling and management.
-- **Database Layer:** Uses MongoDB for flexible data storage and retrieval.
-- **Monitoring:** Integrated with Prometheus and Grafana for real-time system metrics visualization.
+Octopus is an advanced inventory management platform. This project demonstrates a comprehensive cloud architecture featuring service distribution, load balancing, and continuous monitoring. It enables businesses to manage items, quantities, and updates in real-time within a secure and resilient environment.
 
-## 3. Technical Stack
-- **Nginx:** Serves as a reverse proxy and load balancer, optimizing request processing.
-- **Node.js with Express:** Manages the microservices, designed for concurrent processing and responsiveness.
-- **MongoDB:** NoSQL database providing flexibility in data management.
-- **Prometheus:** Collects metrics from services for performance monitoring.
-- **Grafana:** Visualizes metrics from Prometheus, creating dashboards for insights.
+## ☁️ AWS Infrastructure
 
-## 4. CI/CD Pipeline Workflow
-The CI/CD pipeline automates the build and deployment process using GitHub Actions and Docker, ensuring seamless updates to production with minimal downtime.
+The project is built on AWS cloud infrastructure and managed using Infrastructure as Code (IaC) principles:
 
-## 5. Docker Compose Configuration
-Using Docker Compose to define and manage multi-container applications. Below is a sample configuration:
-```yaml
-version: '3.8'
-services:
-  web:
-    image: octopus/web
-    ports:
-      - '80:80'
-  api:
-    image: octopus/api
-  db:
-    image: mongo
+- **EC2 (Elastic Compute Cloud):** A t3.micro virtual server running all containers in a Docker environment.
+- **VPC & Networking:** An isolated network ensuring that communication between the application and the database remains internal and secure.
+- **Security Groups:** Firewall configuration allowing external access only through essential ports:
+  - Port 80: Public web access
+  - Port 22: SSH management access
+  - Port 3000: Grafana monitoring dashboard access
+- **Terraform:** All resources were automatically provisioned using Terraform scripts, allowing for entire infrastructure recreation with a single command.
+
+## 🔄 CI/CD Process (Automation Pipeline)
+
+The project implements a Continuous Integration & Continuous Deployment pipeline for full automation:
+
+1. **Code Push:** Pushing code to GitHub triggers the automated workflow
+2. **GitHub Actions:** Automated testing and building of the Docker Image
+3. **Docker Hub:** Deployment of the updated image to a central repository
+4. **Auto-Deploy:** SSH connection to the EC2 server, pulling the latest image, and refreshing services with zero downtime
+
+## 🏗️ System Architecture
+
+The system is built with a layered architecture to ensure stability and efficiency:
+
+```
+graph TD
+    User((Users)) -->|Port 80| Nginx[Nginx Load Balancer]
+    
+    subgraph "AWS EC2 Cluster"
+        Nginx -->|Round Robin| App1[App Replica 1]
+        Nginx -->|Round Robin| App2[App Replica 2]
+        Nginx -->|Round Robin| App3[App Replica 3]
+        
+        App1 & App2 & App3 -->|Persistence| Mongo[(MongoDB)]
+        
+        subgraph "Monitoring Layer"
+            Prom[Prometheus] -->|Metrics| App1 & App2 & App3
+            Grafana[Grafana] -->|Visualize| Prom
+        end
+    end
+    
+    classDef blue fill:#38bdf8,stroke:#0369a1,color:#fff
+    classDef green fill:#10b981,stroke:#047857,color:#fff
+    classDef orange fill:#f59e0b,stroke:#b45309,color:#fff
+    classDef red fill:#ef4444,stroke:#b91c1c,color:#fff
+    
+    class App1,App2,App3 blue
+    class Mongo green
+    class Grafana orange
+    class Prom red
 ```
 
-## 6. Resilience and High Availability
-Features such as auto-scaling, failover mechanisms, and data replication are implemented to ensure system availability during failures. Infrastructure is designed to support horizontal scaling.
+### Architecture Layers
 
-## 7. Security Features
-Security is a key aspect of the Octopus project:
-- API authentication is secured with JWT tokens.
-- Data encryption is enforced at rest and in transit.
+- **Traffic Layer:** Nginx server acting as a Reverse Proxy and Load Balancer
+- **Logic Layer:** 3 Node.js replicas for maximum redundancy
+- **Data Layer:** MongoDB utilizing Docker Volumes for data persistence
+- **Monitoring Layer:** Prometheus and Grafana for performance tracking
 
-## 8. Getting Started Guide
-To set up the Octopus project locally:
-1. Clone the repository
-2. Please follow the [installation guide](INSTALL.md).
+## 🛡️ Resilience & Data Persistence
 
-## 9. Monitoring and Troubleshooting
-- Use Grafana dashboards to monitor system health.
-- Prometheus alerts notify the team of potential issues before they escalate.
+### What happens if a container fails?
+The system is designed for High Availability: Nginx detects failures and reroutes traffic to healthy replicas immediately (Zero Downtime). Thanks to the `restart: always` policy, the failed container is automatically redeployed within 2-5 seconds.
 
-## 10. Project Structure
-The Octopus project follows a modular structure:
+### Is data saved after a crash?
+Yes. All data is stored in Docker Volumes mapped to the EC2 physical disk. This ensures no data loss even if the database container is replaced or the server restarts.
+
+## 🛠️ Technical Specifications
+
+| Component | Technology | Ports | Role |
+|-----------|------------|-------|------|
+| Nginx | Reverse Proxy | 80:80 | Request Routing & Load Balancing |
+| App | Node.js Express | 3000 (Int) | Inventory Logic & Metrics Exposure |
+| Database | MongoDB | 27017 (Int) | Persistent Data Storage |
+| Monitoring | Prometheus | 9090 (Int) | Metrics Collection |
+| Visual | Grafana | 3000:3000 (Ext) | Visual Dashboards |
+
+## 🔑 Master Credentials
+
+- **Username:** octopus
+- **Password:** octopus
+- **Valid for:** Grafana, MongoDB, and Application Admin
+
+## 🚀 Quick Start
+
+```bash
+# Clone the repository
+git clone https://github.com/danielryazanov/octopus-app-dev.git
+
+# Navigate to the project directory
+cd octopus-app-dev
+
+# Spin up the infrastructure
+sudo docker-compose up -d
 ```
-/octopus
-  /services
-    /web
-    /api
-  /docker
-  /docs
+
+## 📚 Documentation
+
+- For detailed installation instructions, see [INSTALL.md](INSTALL.md)
+- For troubleshooting, see [Monitoring and Troubleshooting](#monitoring-and-troubleshooting) section
+
+## 🔍 Monitoring and Troubleshooting
+
+- Use Grafana dashboards to monitor system health (accessible at http://13.50.17.24:3000)
+- Prometheus alerts notify the team of potential issues before they escalate
+- Check container logs for debugging: `docker-compose logs [service-name]`
+
+## 📁 Project Structure
+
+```
+/octopus-app-dev
+  ├── /services
+  │   ├── /web
+  │   └── /api
+  ├── /docker
+  ├── /terraform
+  ├── /docs
+  ├── docker-compose.yml
+  └── README.md
 ```
 
 ---
+
 Feel free to contribute to this documentation by submitting suggestions or pull requests.
