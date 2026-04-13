@@ -33,74 +33,50 @@ jobs:
           username: ubuntu
           key: ${{ secrets.SSH_PRIVATE_KEY }}
           script: |
-            # 1. התקנת Docker (אם חסר)
+            # 1. הסרת גרסה ישנה ובעייתית של Docker Compose (שגורמת ל-KeyError)
+            sudo apt-get remove -y docker-compose || true
+
+            # 2. התקנת Docker (במידה וחסר)
             if ! command -v docker &> /dev/null; then
               sudo apt-get update
               sudo apt-get install -y docker.io
               sudo systemctl start docker
+              sudo systemctl enable docker
               sudo usermod -aG docker ubuntu
             fi
 
-            # 2. התקנת Docker Compose (גרסה 2 יציבה) בצורה ישירה
-            if ! command -v docker-compose &> /dev/null; then
-              sudo curl -L "https://github.com/docker/compose/releases/download/v2.26.1/docker-compose-$(uname -s)-$(uname -m)" -o /usr/local/bin/docker-compose
-              sudo chmod +x /usr/local/bin/docker-compose
-            fi
+            # 3. התקנה נקייה של Docker Compose V2 החדש ביותר
+            sudo curl -L "https://github.com/docker/compose/releases/latest/download/docker-compose-$(uname -s)-$(uname -m)" -o /usr/local/bin/docker-compose
+            sudo chmod +x /usr/local/bin/docker-compose
 
-            # 3. הכנת התיקיות והקבצים בשרת
-            mkdir -p ~/app/nginx
+            # 4. הכנת תיקיית האפליקציה בשרת
+            mkdir -p ~/app
             cd ~/app
 
-            # 4. יצירת קובץ ה-Compose
+            # 5. יצירת קובץ ה-docker-compose.yaml בשרת
             cat <<EOF > docker-compose.yaml
             version: '3.8'
             services:
               app:
                 image: ${{ secrets.DOCKER_USERNAME }}/octopus-app:latest
-                restart: always
+                ports:
+                  - "80:3000"
                 environment:
                   - MONGO_URI=mongodb://db:27017/fruitsDB
-                networks:
-                  - app-network
-                  - db-network
                 depends_on:
                   - db
+                restart: always
               db:
                 image: mongo:latest
+                container_name: mongodb
                 restart: always
-                networks:
-                  - db-network
-              nginx:
-                image: nginx:alpine
-                restart: always
-                ports:
-                  - "80:80"
                 volumes:
-                  - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
-                networks:
-                  - app-network
-                depends_on:
-                  - app
-            networks:
-              app-network:
-              db-network:
+                  - mongodb_data:/data/db
+            volumes:
+              mongodb_data:
             EOF
 
-            # 5. יצירת קובץ ה-Nginx
-            cat <<EOF > nginx/nginx.conf
-            events { worker_connections 1024; }
-            http {
-                server {
-                    listen 80;
-                    location / {
-                        proxy_pass http://app:3000;
-                        proxy_set_header Host \$host;
-                        proxy_set_header X-Real-IP \$remote_addr;
-                    }
-                }
-            }
-            EOF
-
-            # 6. הרצה עם המקף (docker-compose)
-            sudo docker-compose pull
-            sudo docker-compose up -d
+            # 6. הרצה מנצחת (שימוש בנתיב המלא כדי לוודא שמשתמשים בגרסה החדשה)
+            sudo /usr/local/bin/docker-compose down || true
+            sudo /usr/local/bin/docker-compose pull
+            sudo /usr/local/bin/docker-compose up -d
