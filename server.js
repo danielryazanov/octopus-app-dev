@@ -69,7 +69,7 @@ app.get('/', async (req, res) => {
                 </head>
                 <body>
                     <h1>hello world 🍎</h1>
-                    <h2>ניהול מלאי חכם 🛒</h2>
+                    <h2>ניהול מלאי חכם Octopus 🛒</h2>
                     <div class="form-box">
                         <h3 style="margin-top: 0;">➕ הוספת מוצר חדש</h3>
                         <input type="text" id="newName" placeholder="שם הפריט (אותיות בלבד)" style="width: 96%;">
