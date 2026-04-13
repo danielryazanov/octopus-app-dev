@@ -1,4 +1,4 @@
-name: CI/CD Final Production - Atlas Edition
+name: CI/CD Final Production - Atlas & Monitoring
 
 on:
   push:
@@ -33,11 +33,11 @@ jobs:
           username: ubuntu
           key: ${{ secrets.SSH_PRIVATE_KEY }}
           script: |
-            # 1. התקנה ידנית של Docker Compose (גרסה 2 יציבה)
+            # 1. התקנה/עדכון של Docker Compose
             sudo curl -L "https://github.com/docker/compose/releases/download/v2.26.1/docker-compose-$(uname -s)-$(uname -m)" -o /usr/local/bin/docker-compose
             sudo chmod +x /usr/local/bin/docker-compose
             
-            # 2. הכנת תיקיות
+            # 2. הכנת תיקיות להגדרות
             mkdir -p ~/app/nginx ~/app/prometheus
             cd ~/app
 
@@ -56,7 +56,17 @@ jobs:
             }
             EOF
 
-            # 4. יצירת ה-Docker Compose המעודכן (ללא DB מקומי)
+            # 4. יצירת הגדרות Prometheus
+            cat <<EOF > prometheus/prometheus.yml
+            global:
+              scrape_interval: 15s
+            scrape_configs:
+              - job_name: 'nodejs-app'
+                static_configs:
+                  - targets: ['app:3000']
+            EOF
+
+            # 5. יצירת ה-Docker Compose המלא (כולל הניטור וה-URI הנכון)
             cat <<EOF > docker-compose.yaml
             services:
               app:
@@ -73,11 +83,21 @@ jobs:
                   - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
                 depends_on:
                   - app
+              prometheus:
+                image: prom/prometheus:latest
+                restart: always
+                ports:
+                  - "9090:9090"
+                volumes:
+                  - ./prometheus/prometheus.yml:/etc/prometheus/prometheus.yml
+              grafana:
+                image: grafana/grafana:latest
+                restart: always
+                ports:
+                  - "3000:3000"
             EOF
 
-            # 5. ניקוי יסודי והרצה עם הנתיב המלא (מונע את שגיאת unknown command)
+            # 6. הרצה מחדש נקייה
             sudo /usr/local/bin/docker-compose down --remove-orphans || true
-            sudo docker rm -f octopus-app nginx || true
-            
             sudo /usr/local/bin/docker-compose pull
             sudo /usr/local/bin/docker-compose up -d
