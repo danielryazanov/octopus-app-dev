@@ -63,7 +63,7 @@ jobs:
                 image: ${{ secrets.DOCKER_USERNAME }}/octopus-app:latest
                 restart: always
                 environment:
-                  - MONGO_URI=mongodb+srv://octopus_user:YJpn6ZTdPdiBNBXq@danielmongo.3yle095.mongodb.net/fruitsDB?retryWrites=true&w=majority&appName=danielMongo
+                  - MONGO_URI=mongodb+srv://octopus_user:YJpn6ZTdPdiBNBXq@danielmongo.3yle095.mongodb.net/test?retryWrites=true&w=majority&appName=danielMongo
               nginx:
                 image: nginx:alpine
                 restart: always
