@@ -36,6 +36,34 @@ async function updatePrometheusMetrics() {
     itemsGauge.set(items.length);
 }
 // -----------------------------------------------
+// --- שלב האבטחה: שימוש במשתני סביבה (בלי לחשוף סיסמאות בקוד) ---
+const ADMIN_USER = process.env.ADMIN_USER;
+const ADMIN_PASS = process.env.ADMIN_PASS;
+
+const authMiddleware = (req, res, next) => {
+    const authHeader = req.headers.authorization;
+
+    if (!authHeader) {
+        // אם אין פרטי התחבורה, מקפיצים חלונית בדפדפן
+        res.setHeader('WWW-Authenticate', 'Basic realm="Octopus Store"');
+        return res.status(401).send('Authentication required');
+    }
+
+    const auth = Buffer.from(authHeader.split(' ')[1], 'base64').toString().split(':');
+    const user = auth[0];
+    const pass = auth[1];
+
+    // בודק מול המשתנים שנגדיר ב-Docker
+    if (user === ADMIN_USER && pass === ADMIN_PASS) {
+        next(); // הכל תקין, כנס פנימה
+    } else {
+        res.setHeader('WWW-Authenticate', 'Basic realm="Octopus Store"');
+        return res.status(401).send('Invalid credentials');
+    }
+};
+
+// מחיל את האבטחה על כל מה שבא מתחת לשורה הזו
+app.use(authMiddleware);
 
 app.use(express.json());
 
